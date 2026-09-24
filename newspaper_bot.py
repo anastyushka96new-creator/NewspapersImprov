@@ -258,7 +258,7 @@ def generate_draft_html(tg_news, reddit_news, rss_news):
     Верни только готовый HTML-код.
     """
     
-    chat = client.chats.create(model="gemini-3.6-flash")
+    chat = client.chats.create(model="gemini-3.7-flash")
     
     for attempt in range(15):
         try:
