@@ -265,9 +265,9 @@ def generate_draft_html(tg_news, reddit_news, rss_news):
             response = chat.send_message(prompt)
             return response.text.replace("```html", "").replace("```", "").strip()
         except Exception as e:
-            if "503" in str(e) and attempt < 14:
-                print(f"Сервер перегружен. Ожидание 60 сек (попытка {attempt + 1} из 15)...")
-                time.sleep(60)
+            if ("503" in str(e) or "429" in str(e)) and attempt < 14:
+                print(f"      [!] API перегружен или лимит исчерпан. Ждем 65 секунд (попытка {attempt + 1} из 15)...", flush=True)
+                time.sleep(65)
             else:
                 raise e
 
