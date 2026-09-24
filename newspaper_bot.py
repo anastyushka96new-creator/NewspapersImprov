@@ -135,18 +135,40 @@ def send_pdf_to_telegram(pdf_path):
         requests.post(url, data={"chat_id": MY_CHAT_ID, "caption": caption}, files={"document": doc}, timeout=60)
 
 def fetch_reddit_posts():
+    print("Сбор топовых тредов с r/improv...")
     reddit_url = "https://www.reddit.com/r/improv/top.json?limit=5&t=week"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ImprovNewspaperBot/1.0"}
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1"
+    }
     reddit_texts = []
+    
     try:
-        response = requests.get(reddit_url, headers=headers, timeout=30)
+        response = requests.get(reddit_url, headers=headers)
         if response.status_code == 200:
-            for post in response.json().get('data', {}).get('children', []):
-                title, text = post.get('data', {}).get('title', ''), post.get('data', {}).get('selftext', '')
+            posts = response.json().get('data', {}).get('children', [])
+            for post in posts:
+                data = post.get('data', {})
+                title = data.get('title', '')
+                text = data.get('selftext', '')
                 if title:
-                    reddit_texts.append(f"[Reddit]: {title}\n{text[:1000]}...")
-    except: pass
-    return "\n\n".join(reddit_texts)
+                    short_text = text[:1500] + "..." if len(text) > 1500 else text
+                    reddit_texts.append(f"[Reddit]: Заголовок: {title}\nТекст: {short_text}")
+            print(f"Найдено тредов на Reddit: {len(reddit_texts)}")
+        else:
+            print(f"Ошибка Reddit: код ответа {response.status_code}")
+    except Exception as e:
+        print(f"Ошибка при сборе Reddit: {e}")
+        
+    return "\n\n---\n\n".join(reddit_texts)
 
 def fetch_rss_posts():
     print("Сбор свежих статей из RSS-блогов...")
@@ -232,256 +254,71 @@ def fetch_channel_posts():
     print(f"Всего собрано текстов из Telegram: {len(collected_texts)}")
     return "\n\n---\n\n".join(collected_texts)
 
-def generate_section_html(raw_news, section_title, layout_html):
+def generate_draft_html(tg_news, reddit_news, rss_news):
     client = genai.Client(api_key=GEMINI_API_KEY)
     
     prompt = f"""
-    Ты — ИИ-редактор. Твоя задача — собрать ОДНУ рубрику для газеты об импровизации.
+    Ты — ИИ-редактор. Твоя задача — собрать и структурировать сырой материал для утренней газеты об импровизации.
+    Этот текст будет загружен в Google Docs для финальной человеческой редактуры.
     
-    Все новости за день:
-    {raw_news}
+    Новости из Telegram:
+    {tg_news}
     
-    Твоя задача:
-    1. Найди в новостях информацию, которая подходит для рубрики "{section_title}".
-    2. КРИТИЧНОЕ УСЛОВИЕ: Если подходящих новостей для этой рубрики НЕТ, верни только одно слово: NO_CONTENT.
-    3. Если новости есть, сверстай их строго по HTML-шаблону ниже.
+    Тренды с Reddit:
+    {reddit_news}
     
-    ШАБЛОН ВЕРСТКИ:
-    <div style="margin-bottom: 40px;">
-        <h2 style="font-family: 'Times New Roman', Georgia, serif; font-size: 26px; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 5px; margin-bottom: 20px;">{section_title}</h2>
-        {layout_html}
-    </div>
+    Статьи из блогов (RSS):
+    {rss_news}
     
-    ПРАВИЛА ОФОРМЛЕНИЯ:
-    - НЕ МЕНЯЙ теги таблиц.
-    - ЗАПРЕЩЕНО использовать списки <ul> и <li>. Используй <p> для абзацев.
-    - Если у новости ЕСТЬ фото, удали блок <div ...>[Место для графитного скетча...]</div> и вставь фото. Если фото НЕТ — удали текст [ВСТАВЬ_ФОТО_СЮДА_ИЛИ_ОСТАВЬ_DIV_НИЖЕ], но сам серый <div> обязательно оставь.
-    - Замени все плейсхолдеры [ТЕКСТ_СЮДА] на реальные развернутые новости.
+    Требования к форматированию:
+    Используй простую HTML-разметку (h1, h2, h3, p, ul, li). Не используй теги <style>, <head>, <body> — только чистый контент.
+    Если в тексте есть пометка [Фото: URL_ССЫЛКА], обязательно вставь картинку с помощью <img src="URL_ССЫЛКА" width="300">.
     
-    Верни ТОЛЬКО готовый HTML-код. Без маркдауна.
+    Рубрики:
+    1. Главные события (Анонсы курсов, шоу, фестивали). Группируй по городам.
+    2. Биржа джемов (Открытые микрофоны).
+    3. Уголок теоретика. Переведи на русский и адаптируй тренды с Reddit и статьи из RSS-блогов.
+    4. Дневники сцены. Личные впечатления комиков, эмоции и инсайты.
+    5. Шутки дня и разгоны. Неформальные диалоги, панчи, сплетни.
+    6. Новости комьюнити и Разное. Все остальные посты и микро-анонсы.
+    
+    Стиль:
+    Сохраняй максимум фактуры и исходных цитат. Не удаляй контент, если он не является откровенным спамом.
+    Верни только готовый HTML-код.
     """
     
-    for attempt in range(10):
+    chat = client.chats.create(model="gemini-3.6-flash")
+    
+    for attempt in range(15):
         try:
-            # Создаем чистый чат с нуля на КАЖДУЮ попытку. 
-            # Это обнуляет память и спасает лимиты при переотправке.
-            chat = client.chats.create(model="gemini-3.6-flash")
             response = chat.send_message(prompt)
-            
             return response.text.replace("```html", "").replace("```", "").strip()
         except Exception as e:
-            if "429" in str(e) or "503" in str(e):
-                print(f"      [!] API перегружен. Ждем 65 секунд (Попытка {attempt+1}/10)...", flush=True)
-                time.sleep(65)
+            if "503" in str(e) and attempt < 14:
+                print(f"Сервер перегружен. Ожидание 60 сек (попытка {attempt + 1} из 15)...")
+                time.sleep(60)
             else:
                 raise e
-                
-    return "NO_CONTENT"
-    
 
-def build_full_newspaper(tg_news, reddit_news, rss_news):
-    raw_news = f"Телеграм:\n{tg_news}\n\nReddit:\n{reddit_news}\n\nБлоги:\n{rss_news}"
-    
-    MAX_CHARS = 40000 
-    if len(raw_news) > MAX_CHARS:
-        raw_news = raw_news[:MAX_CHARS] + "\n\n[ОСТАЛЬНЫЕ НОВОСТИ ОБРЕЗАНЫ ДЛЯ ЭКОНОМИИ ЛИМИТОВ API]"
-        print(f"[!] Слишком много новостей. Текст обрезан до {MAX_CHARS} символов.", flush=True)
-    
-    layout_classic_title = """
-    <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border: none; background-color: #ffffff;">
-        <tr>
-            <td colspan="3" style="border: none; padding-bottom: 20px; vertical-align: top;">
-                [ВСТАВИТЬ_ГЛАВНОЕ_ФОТО_ЕСЛИ_ЕСТЬ]
-                <h3 style="font-size: 24px; margin: 20px 0 10px 0; font-weight: normal; font-family: 'Times New Roman', Georgia, serif;">[ГЛАВНЫЙ_ЗАГОЛОВОК_НОВОСТИ]</h3>
-                <p style="font-size: 16px; line-height: 1.6;">[РАЗВЕРНУТЫЙ_ТЕКСТ_ГЛАВНОЙ_НОВОСТИ]</p>
-            </td>
-        </tr>
-        <tr>
-            <td width="33%" style="border: none; vertical-align: top; padding-right: 15px;">
-                <p style="font-size: 14px; line-height: 1.5;">[ДОП_НОВОСТЬ_1]</p>
-            </td>
-            <td width="33%" style="border: none; vertical-align: top; padding: 0 15px; border-left: 1px solid #ddd; border-right: 1px solid #ddd;">
-                <p style="font-size: 14px; line-height: 1.5;">[ДОП_НОВОСТЬ_2]</p>
-            </td>
-            <td width="34%" style="border: none; vertical-align: top; padding-left: 15px;">
-                <p style="font-size: 14px; line-height: 1.5;">[ДОП_НОВОСТЬ_3]</p>
-            </td>
-        </tr>
-    </table>
-    """
-    
-    
-    layout_rhythmic_digest = """
-    <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border: none; background-color: #ffffff;">
-        <tr>
-            <td width="33%" style="vertical-align: top; padding-right: 15px; border-right: 1px solid #ccc; border-bottom: 1px solid #ccc; padding-bottom: 15px; border-top: none; border-left: none;">
-                [ФОТО_1_ЕСЛИ_ЕСТЬ]
-                <p style="font-size: 14px; margin-top: 10px;">[КОРОТКАЯ_НОВОСТЬ_ИЛИ_АНОНС_1]</p>
-            </td>
-            <td width="33%" style="vertical-align: top; padding: 0 15px; border-right: 1px solid #ccc; border-bottom: 1px solid #ccc; padding-bottom: 15px; border-top: none; border-left: none;">
-                <p style="font-size: 14px;">[КОРОТКАЯ_НОВОСТЬ_ИЛИ_АНОНС_2]</p>
-            </td>
-            <td width="34%" style="vertical-align: top; padding-left: 15px; border-bottom: 1px solid #ccc; padding-bottom: 15px; border-top: none; border-right: none; border-left: none;">
-                [ФОТО_3_ЕСЛИ_ЕСТЬ]
-                <p style="font-size: 14px; margin-top: 10px;">[КОРОТКАЯ_НОВОСТЬ_ИЛИ_АНОНС_3]</p>
-            </td>
-        </tr>
-        <tr>
-            <td width="33%" style="vertical-align: top; padding-right: 15px; padding-top: 15px; border-right: 1px solid #ccc; border-top: none; border-bottom: none; border-left: none;">
-                <p style="font-size: 14px;">[КОРОТКАЯ_НОВОСТЬ_ИЛИ_АНОНС_4]</p>
-            </td>
-            <td width="67%" colspan="2" style="vertical-align: top; padding-left: 15px; padding-top: 15px; border: none;">
-                <h3 style="font-size: 20px; margin-top: 0; font-weight: normal; font-family: 'Times New Roman', Georgia, serif;">[АКЦЕНТНЫЙ_ЗАГОЛОВОК_ВЫДЕЛЯЮЩЕЙСЯ_НОВОСТИ]</h3>
-                <p style="font-size: 15px; line-height: 1.5;">[ТЕКСТ_ВЫДЕЛЯЮЩЕЙСЯ_НОВОСТИ]</p>
-            </td>
-        </tr>
-    </table>
-    """
-    
-    layout_visual_dominant = """
-    <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border: none; background-color: #ffffff;">
-        <tr>
-            <td width="40%" style="vertical-align: top; padding-right: 20px; border: none;">
-                <h3 style="font-size: 22px; margin-top: 0; font-style: italic; font-family: 'Times New Roman', Georgia, serif;">[ВВОДНЫЙ_ТЕЗИС_ИЛИ_КРУПНАЯ_МЫСЛЬ]</h3>
-                <p style="font-size: 15px; line-height: 1.6;">[ТЕКСТ_АНАЛИТИКИ_ЧАСТЬ_1]</p>
-                <p style="font-size: 15px; line-height: 1.6;">[ТЕКСТ_АНАЛИТИКИ_ЧАСТЬ_2]</p>
-            </td>
-            <td width="60%" style="vertical-align: top; border: none;">
-                [ВСТАВЬ_ФОТО_СЮДА_ИЛИ_ОСТАВЬ_DIV_НИЖЕ]
-                <div style="background-color: #f9f9f9; width: 100%; height: 250px; display: flex; align-items: center; justify-content: center; font-style: italic; color: #888; border: 1px dashed #ccc;">[Место для графитного скетча / Иллюстрации сцены]</div>
-                <p style="font-size: 14px; line-height: 1.6; margin-top: 15px; padding-left: 15px; border-left: 2px solid #333;">[ОСНОВНОЙ_ВЫВОД_ИЛИ_КОНЦОВКА_СТАТЬИ]</p>
-            </td>
-        </tr>
-    </table>
-    """
-
-    layout_asymmetric_portrait = """
-    <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border: none; background-color: #ffffff;">
-        <tr>
-            <td width="65%" style="vertical-align: top; padding-right: 25px; border: none;">
-                <p style="font-size: 16px; line-height: 1.7; margin-top: 0;">[ДЛИННАЯ_ИСТОРИЯ_ИЛИ_ИСПОВЕДЬ_АБЗАЦ_1]</p>
-                <p style="font-size: 16px; line-height: 1.7;">[ДЛИННАЯ_ИСТОРИЯ_ИЛИ_ИСПОВЕДЬ_АБЗАЦ_2]</p>
-            </td>
-            <td width="35%" style="vertical-align: top; border: none;">
-                <div style="background-color: #f9f9f9; width: 100%; height: 180px; display: flex; align-items: center; justify-content: center; font-style: italic; color: #888; border: 1px dashed #ccc;">[Портрет / Фото сцены]</div>
-                <p style="font-size: 13px; font-style: italic; margin-top: 10px; text-align: right; color: #555;">[ПОДПИСЬ_К_ФОТО_ИЛИ_ЦИТАТА]</p>
-                <div style="margin-top: 20px; padding: 15px; background-color: #f4f4f4; font-family: 'Times New Roman', Georgia, serif;">
-                    <p style="font-size: 15px; margin: 0; font-weight: bold;">[ВРЕЗКА_ИЛИ_ДОПОЛНИТЕЛЬНАЯ_МЫСЛЬ]</p>
-                </div>
-            </td>
-        </tr>
-    </table>
-    """
-
-    layout_contrast = """
-    <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border: none; background-color: #ffffff;">
-        <tr>
-            <td width="40%" style="vertical-align: top; background-color: #1a1a1a; color: #ffffff; padding: 25px; border: none;">
-                <h3 style="color: #ffffff; font-size: 24px; margin-top: 0; font-style: italic; font-family: 'Times New Roman', Georgia, serif;">[ГЛАВНАЯ_ЦИТАТА_ШУТКА_ИЛИ_МЕМ]</h3>
-                <p style="font-size: 15px; line-height: 1.6; color: #eeeeee;">[ПОЯСНЕНИЕ_ИЛИ_РАЗГОН_ШУТКИ]</p>
-            </td>
-            <td width="60%" style="vertical-align: top; padding-left: 25px; border: none;">
-                [ФОТО_ЕСЛИ_ЕСТЬ]
-                <h3 style="font-size: 20px; margin-top: 15px; font-weight: normal; font-family: 'Times New Roman', Georgia, serif;">[ДРУГАЯ_ШУТКА_ИЛИ_ЗАГОЛОВОК]</h3>
-                <p style="font-size: 15px; line-height: 1.6;">[ТЕКСТ_ВТОРОЙ_ШУТКИ_ИЛИ_СПЛЕТНИ]</p>
-                <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;">
-                <p style="font-size: 14px; color: #444;">[КОРОТКИЙ_ПАНЧЛАЙН_ИЛИ_ФАКТ]</p>
-            </td>
-        </tr>
-    </table>
-    """
-
-    issue_plan = [
-        {"title": "Радар импровизатора", "layout": layout_classic_title},
-        {"title": "Кузница кадров", "layout": layout_rhythmic_digest},
-        {"title": "Анализ и механики", "layout": layout_visual_dominant},
-        {"title": "Исповедь из-за кулис", "layout": layout_asymmetric_portrait},
-        {"title": "Цех абсурда", "layout": layout_contrast},
-        {"title": "Что по сплетням?", "layout": layout_rhythmic_digest}
-    ]
-    
-    final_html_parts = []
-    
-    for section in issue_plan:
-        print(f"Генерация рубрики: {section['title']}...", flush=True)
-        try:
-            section_html = generate_section_html(raw_news, section['title'], section['layout'])
-            if section_html and "NO_CONTENT" not in section_html:
-                final_html_parts.append(section_html)
-                print(f"-> Успешно сгенерировано.", flush=True)
-            else:
-                print(f"-> Пропуск. Нет информации.", flush=True)
-                
-        except Exception as e:
-            print(f"-> ОШИБКА генерации. Пропускаем. Причина: {e}", flush=True)
-            continue
-            
-        time.sleep(10)
-    
-    if not final_html_parts:
-        return None
-        
-    combined_content = "\n".join(final_html_parts)
-    
-    final_document = f"""
-    <div style="font-family: 'Times New Roman', Georgia, serif; color: #111; background-color: #ffffff;">
-        <div style="text-align: center; margin-bottom: 50px; border-bottom: 3px solid #111; padding-bottom: 20px;">
-            <h1 style="font-family: 'Times New Roman', Georgia, serif; font-size: 52px; margin: 0; text-transform: uppercase; letter-spacing: 3px; font-weight: normal;">Газета</h1>
-            <p style="font-size: 14px; margin: 10px 0 0 0; font-style: italic; text-transform: uppercase; letter-spacing: 1px; font-family: 'Times New Roman', Georgia, serif;">Утренний выпуск • Выжимка самого важного</p>
-        </div>
-        {combined_content}
-    </div>
-    """
-    return final_document
+def send_notification_to_telegram():
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    text = f"📰 Утренний черновик собран и загружен в Google Docs!\n\nМожно приступать к редактуре:\nhttps://docs.google.com/document/d/{DOC_ID}/edit"
+    requests.post(url, data={"chat_id": MY_CHAT_ID, "text": text})
 
 def main():
-    if check_if_built_today():
-        print("Газета уже была успешно собрана сегодня. Завершаю работу.", flush=True)
-        return
-    print("Парсинг источников...", flush=True)
     tg_news = fetch_channel_posts()
     reddit_news = fetch_reddit_posts()
     rss_news = fetch_rss_posts()
     
-    if tg_news.strip() or reddit_news.strip() or rss_news.strip():
-        print("Запуск модульного конвейера Gemini...", flush=True)
-        draft_html = build_full_newspaper(tg_news, reddit_news, rss_news)
-        
-        if draft_html:
-            print("Создание PDF-версии...", flush=True)
-            pdf_html = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <style>
-                    @page {{ size: A4; margin: 15mm; }}
-                    body {{ background-color: #ffffff; line-height: 1.5; }}
-                    img {{ max-width: 100%; height: auto; }}
-                    table {{ page-break-inside: avoid; }}
-                </style>
-            </head>
-            <body>
-                {draft_html}
-            </body>
-            </html>
-            """
-            pdf_path = "newspaper.pdf"
-            HTML(string=pdf_html).write_pdf(pdf_path)
-            
-            print("Загрузка черновика в Google Docs...", flush=True)
-            update_google_doc(draft_html)
-            
-            print("Загрузка PDF на Google Диск...", flush=True)
-            upload_pdf_to_drive(pdf_path)
-            
-            print("Отправка PDF в Telegram...", flush=True)
-            send_pdf_to_telegram(pdf_path)
-            print("Успешно завершено!", flush=True)
-        else:
-            print("Газета не собрана: во всех рубриках сработал NO_CONTENT.", flush=True)
+    if tg_news.strip() != "---" or reddit_news.strip() != "---" or rss_news.strip() != "---":
+        print("Генерация черновика через Gemini...")
+        draft_html = generate_draft_html(tg_news, reddit_news, rss_news)
+        print("Загрузка черновика в Google Docs...")
+        update_google_doc(draft_html)
+        print("Отправка уведомления в Telegram...")
+        send_notification_to_telegram()
     else:
-        print("Внимание: За последние 24 часа не найдено ни одного нового поста.", flush=True)
+        print("Внимание: За последние 24 часа не найдено ни одного подходящего поста в источниках.")
 
 if __name__ == "__main__":
     main()
