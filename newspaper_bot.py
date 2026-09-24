@@ -22,7 +22,7 @@ DOC_ID = "13tQCDrY7eW1q0kUggi-1wVXpm8Phh8HxuKwu6GREsd8"
 PDF_FOLDER_ID = "1enu9CNlCXxGMojV6lbtjobHWWrhg8q_c"
 
 CHANNELS = [
-    "zzakatov", "darya_dinosaur_fm", "improv_nv", "dudyukajulia", "improvizekb", 
+    "zzakatov", "darya_dinosaur_fm", "improv_nv", "dudyukajulia", "improvizekb", "kolbasgolimprov",
     "imtakproshche", "sidishkaaa", "svetkakrevetkaaa", "klimchudickyea", "trenazh", 
     "maly6kina", "improvplus", "proseccoshow", "iclairs_improv", "kmp_impro", "paraimprovfraz",
     "shamina_sharit", "improvinsight", "golce06", "improvstudioru", "ImprovBuro", "isk_gus",
