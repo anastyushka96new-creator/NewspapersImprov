@@ -115,13 +115,12 @@ def send_pdf_to_telegram(pdf_path):
         print(f"Ошибка при отправке PDF в Telegram: {e}", flush=True)
 
 def fetch_reddit_posts():
-    print("Сбор топовых тредов с r/improv...")
+    print("Сбор топовых тредов с r/improv...", flush=True)
     reddit_url = "https://www.reddit.com/r/improv/top.json?limit=5&t=week"
     
+    # Честный User-Agent по правилам API Reddit, чтобы избежать 403 ошибки
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5"
+        "User-Agent": "python:improv.newspaper.bot:v2.0 (by /u/improv_bot)"
     }
     reddit_texts = []
     
@@ -136,11 +135,11 @@ def fetch_reddit_posts():
                 if title:
                     short_text = text[:1500] + "..." if len(text) > 1500 else text
                     reddit_texts.append(f"[Reddit]: Заголовок: {title}\nТекст: {short_text}")
-            print(f"Найдено тредов на Reddit: {len(reddit_texts)}")
+            print(f"Найдено тредов на Reddit: {len(reddit_texts)}", flush=True)
         else:
-            print(f"Ошибка Reddit: код ответа {response.status_code}")
+            print(f"Ошибка Reddit: код ответа {response.status_code}", flush=True)
     except Exception as e:
-        print(f"Ошибка при сборе Reddit: {e}")
+        print(f"Ошибка при сборе Reddit: {e}", flush=True)
         
     return "\n\n---\n\n".join(reddit_texts) if reddit_texts else ""
 
